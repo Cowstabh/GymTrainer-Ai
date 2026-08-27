@@ -59,7 +59,7 @@ Return a strict JSON object with the following schema. ZERO EMOJIS.
     await saveKineticHistory(userId, updatedHistory).catch(console.error);
 
     return NextResponse.json({ debrief: aiResponse });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating execution debrief:", error);
     return NextResponse.json({ error: "Failed to generate execution debrief" }, { status: 500 });
   }

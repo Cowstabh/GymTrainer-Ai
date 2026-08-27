@@ -7,12 +7,12 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 
 const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
 
-async function generateWithFallback(aiClient, payload) {
-  let lastError = null;
+async function generateWithFallback(aiClient: any, payload: any) {
+  let lastError: any = null;
   for (const model of MODELS) {
     try {
       return await aiClient.models.generateContent({ ...payload, model });
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`Model ${model} failed:`, error?.message || error);
       lastError = error;
     }
@@ -177,7 +177,7 @@ Kinetic History (Past Debriefs): ${JSON.stringify(kineticHistory)}
       // Make a second call to Gemini with the function responses
       const followUpContents = [...contents, {
         role: "model",
-        parts: response.functionCalls.map(call => ({ functionCall: call }))
+        parts: response.functionCalls.map((call: any) => ({ functionCall: call }))
       }, {
         role: "user",
         parts: functionResponses.map(resp => ({ functionResponse: resp }))

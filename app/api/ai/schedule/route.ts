@@ -7,12 +7,12 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 
 const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
 
-async function generateWithFallback(aiClient, payload) {
-  let lastError = null;
+async function generateWithFallback(aiClient: any, payload: any) {
+  let lastError: any = null;
   for (const model of MODELS) {
     try {
       return await aiClient.models.generateContent({ ...payload, model });
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`Model ${model} failed:`, error?.message || error);
       lastError = error;
     }
@@ -87,7 +87,7 @@ Return a strict JSON object with the following schema. ZERO EMOJIS.
     }
 
     return NextResponse.json({ plan: aiResponse });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating schedule:", error);
     return NextResponse.json({ error: "Failed to generate schedule" }, { status: 500 });
   }
