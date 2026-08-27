@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { MessageSquare, X, Send, Loader2 } from "lucide-react";
+import { MessageSquare, X, Send, Loader2, Mic, Volume2, VolumeX } from "lucide-react";
+import toast from "react-hot-toast";
 
 type Message = {
   role: "user" | "model" | "system";
@@ -17,6 +18,10 @@ export default function AIChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [trainerName, setTrainerName] = useState("Coach Kabir");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Voice States
+  const [isListening, setIsListening] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
     try {
@@ -39,12 +44,82 @@ export default function AIChatbot() {
     scrollToBottom();
   }, [messages]);
 
+  // Text-to-Speech Engine (ElevenLabs Hyper-Realistic Audio)
+  const speakMessage = async (text: string) => {
+    if (isMuted) return;
+    
+    try {
+      // Clean markdown asterisks from text
+      const cleanText = text.replace(/[*#_]/g, '');
+
+      const response = await fetch("/api/ai/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: cleanText, trainerName }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "TTS failed");
+      }
+
+      // Convert audio buffer to Blob and play it natively
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } catch (error) {
+      console.error("ElevenLabs Playback error:", error);
+      // Fallback to native voice if ElevenLabs fails/runs out of credits
+      if ('speechSynthesis' in window) {
+         const utterance = new SpeechSynthesisUtterance(text.replace(/[*#_]/g, ''));
+         window.speechSynthesis.speak(utterance);
+      }
+    }
+  };
+
+  // Speech-to-Text Engine
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Tactical voice systems not supported in this browser.");
+      return;
+    }
+
+    if (isListening) return; // Allow natural stop
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-IN';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.success("Mic active. Speak now.");
+    };
+
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
+
   if (status !== "authenticated") {
     return null;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = { role: "user", content: input };
@@ -77,15 +152,17 @@ export default function AIChatbot() {
           message: userMessage.content,
           history: historyToSend,
           bioData,
-          telemetry
+          telemetry,
+          clientTime: new Date().toLocaleString()
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setMessages((prev) => [...prev, { role: "model", content: data.reply }]);
+        const replyText = data.reply;
+        setMessages((prev) => [...prev, { role: "model", content: replyText }]);
+        speakMessage(replyText); // Voice Output
         
-        // If regenerateMatrix was called, we might want to refresh the page or tell the user
         if (data.toolsCalled?.includes("regenerateMatrix")) {
            setMessages((prev) => [...prev, { role: "system", content: "Tactical Matrix has been regenerated. Refresh or check dashboard." }]);
         }
@@ -108,15 +185,25 @@ export default function AIChatbot() {
               <MessageSquare size={18} />
               {trainerName}
             </h3>
-            <button onClick={() => setIsOpen(false)} className="text-emerald-100 hover:text-white transition">
-              <X size={20} />
-            </button>
+            <div className="flex gap-3">
+              <button onClick={() => {
+                  setIsMuted(!isMuted);
+                  if (!isMuted) window.speechSynthesis.cancel();
+                }} 
+                className="text-emerald-100 hover:text-white transition"
+              >
+                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
+              <button onClick={() => setIsOpen(false)} className="text-emerald-100 hover:text-white transition">
+                <X size={20} />
+              </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-950">
             {messages.length === 0 && (
               <div className="text-slate-500 text-center mt-10 text-sm italic">
-                System online. Waiting for input...
+                System online. Audio protocols engaged. Waiting for input...
               </div>
             )}
             {messages.map((msg, idx) => (
@@ -145,6 +232,14 @@ export default function AIChatbot() {
 
           <div className="p-3 bg-slate-900 border-t border-slate-800">
             <form onSubmit={handleSubmit} className="flex gap-2">
+              <button 
+                type="button"
+                onClick={toggleListening}
+                className={`p-2 rounded transition-all ${isListening ? 'bg-red-500/20 text-red-500 border border-red-500 animate-pulse' : 'bg-slate-800 text-emerald-500 hover:bg-slate-700 border border-slate-700'}`}
+                title="Voice Input"
+              >
+                <Mic size={18} />
+              </button>
               <input
                 type="text"
                 value={input}
