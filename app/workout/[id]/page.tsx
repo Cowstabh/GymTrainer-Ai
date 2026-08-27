@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, use } from 'react';
 import { Play, Pause, CheckCircle2, ChevronRight, Activity, X, ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import toast from 'react-hot-toast';
 import VideoFormAnalyzer from '@/components/VideoFormAnalyzer';
 
 interface WorkoutPageProps {

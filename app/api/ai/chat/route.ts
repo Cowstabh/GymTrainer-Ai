@@ -121,6 +121,7 @@ Telemetry: ${JSON.stringify(telemetry || {})}
           await saveKineticHistory(userId, pastHistory);
           toolResponseContent = `Successfully appended debrief to KineticHistory in DynamoDB.`;
         } else if (call.name === "regenerateMatrix") {
+          const args = call.args as any;
           const protocol = req.headers.get("x-forwarded-proto") || "http";
           const host = req.headers.get("host") || "localhost:3000";
           

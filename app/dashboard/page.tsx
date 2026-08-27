@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import toast from "react-hot-toast";
 import VisualNutrition from "@/components/VisualNutrition";
 import { Dumbbell, Utensils, Activity, PowerOff, Zap } from "lucide-react";
 
@@ -280,7 +281,7 @@ export default function Dashboard() {
                           )}
                           <button 
                             onClick={handleRegenerate}
-                            disabled={generating || (schedule && showRecalibrate && recalibrationPrompt.trim() === '')}
+                            disabled={generating || Boolean(schedule && showRecalibrate && recalibrationPrompt.trim() === '')}
                             className="px-8 py-3 font-bold text-black bg-emerald-500 rounded-md transition-all hover:bg-emerald-400 disabled:opacity-50 uppercase tracking-wider shadow-[0_0_15px_rgba(16,185,129,0.3)]"
                           >
                             {generating ? "Recalibrating..." : schedule ? "Confirm Edit" : "Initiate Generation"}
