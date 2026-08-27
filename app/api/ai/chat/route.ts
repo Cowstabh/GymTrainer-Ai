@@ -4,9 +4,25 @@ import { getKineticHistory, saveKineticHistory } from "@/lib/dynamodb";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 
+
+const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+
+async function generateWithFallback(aiClient, payload) {
+  let lastError = null;
+  for (const model of MODELS) {
+    try {
+      return await aiClient.models.generateContent({ ...payload, model });
+    } catch (error) {
+      console.warn(`Model ${model} failed:`, error?.message || error);
+      lastError = error;
+    }
+  }
+  throw new Error("All backup AI models are exhausted or rate-limited. " + (lastError?.message || ""));
+}
+
 export async function POST(req: Request) {
   try {
-    const { userId, message, history, bioData, telemetry } = await req.json();
+    const { userId, message, history, bioData, telemetry, clientTime } = await req.json();
 
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
@@ -18,9 +34,18 @@ export async function POST(req: Request) {
     if (trainerGender === "Male") trainerName = "Coach Vikram";
     if (trainerGender === "Female") trainerName = "Coach Tara";
 
+    // Fetch KineticHistory so the Chatbot knows past timestamps
+    const kineticHistoryData = await getKineticHistory(userId).catch(() => null);
+    const kineticHistory = kineticHistoryData?.history || [];
+
     const systemPrompt = `You are ${trainerName}, an elite Indian tactical AI fitness coach. 
 Your tone MUST be highly compassionate yet strictly disciplined. You care deeply about the user's well-being but absolutely demand their maximum effort and consistency. You speak with authority, wisdom, and encouragement.
 The user selected a trainer gender of '${trainerGender}', which dictates your persona.
+
+CRITICAL TEMPORAL AWARENESS:
+The user's current live time is: ${clientTime || new Date().toLocaleString()}
+Use this timestamp to calculate recovery windows against their Kinetic History. If they finished a grueling workout recently, strictly advise rest.
+
 You have tools available:
 - logFuelPayload: Triggers a simulated Phase 3 nutrition log.
 - logExecutionDebrief: Appends an injury or workout debrief directly to the user's KineticHistory in DynamoDB.
@@ -29,6 +54,7 @@ You have tools available:
 If a tool is called, you will receive its output and you must respond to the user based on that output. Maintain your ${trainerName} persona at all times.
 User Profile: ${JSON.stringify(bioData || {})}
 Telemetry: ${JSON.stringify(telemetry || {})}
+Kinetic History (Past Debriefs): ${JSON.stringify(kineticHistory)}
 `;
 
     // Map history to the required format
@@ -80,7 +106,7 @@ Telemetry: ${JSON.stringify(telemetry || {})}
       ]
     }];
 
-    const response = await ai.models.generateContent({
+    const response = await generateWithFallback(ai, {
       model: "gemini-3.6-flash",
       contents: contents,
       config: {
@@ -157,7 +183,7 @@ Telemetry: ${JSON.stringify(telemetry || {})}
         parts: functionResponses.map(resp => ({ functionResponse: resp }))
       }];
 
-      const followUpResponse = await ai.models.generateContent({
+      const followUpResponse = await generateWithFallback(ai, {
         model: "gemini-3.6-flash",
         contents: followUpContents,
         config: {

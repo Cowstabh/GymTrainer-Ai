@@ -7,6 +7,22 @@ import os from "os";
 // Initialize Gemini SDK
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" });
 
+
+const MODELS = ["gemini-3.6-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+
+async function generateWithFallback(aiClient, payload) {
+  let lastError = null;
+  for (const model of MODELS) {
+    try {
+      return await aiClient.models.generateContent({ ...payload, model });
+    } catch (error) {
+      console.warn(`Model ${model} failed:`, error?.message || error);
+      lastError = error;
+    }
+  }
+  throw new Error("All backup AI models are exhausted or rate-limited. " + (lastError?.message || ""));
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { imageUrl, imageBase64 } = await req.json();
@@ -109,7 +125,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const generatedResult = await ai.models.generateContent({
+    const generatedResult = await generateWithFallback(ai, {
       model: "gemini-3.6-flash",
       contents: [
         {

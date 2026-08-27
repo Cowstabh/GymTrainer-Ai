@@ -4,6 +4,22 @@ import { getWorkoutPlan, saveWorkoutPlan, getKineticHistory } from "@/lib/dynamo
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 
+
+const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+
+async function generateWithFallback(aiClient, payload) {
+  let lastError = null;
+  for (const model of MODELS) {
+    try {
+      return await aiClient.models.generateContent({ ...payload, model });
+    } catch (error) {
+      console.warn(`Model ${model} failed:`, error?.message || error);
+      lastError = error;
+    }
+  }
+  throw new Error("All backup AI models are exhausted or rate-limited. " + (lastError?.message || ""));
+}
+
 export async function POST(req: Request) {
   try {
     const { userId, bioData, telemetry, nutrition, recalibrationPrompt } = await req.json();
@@ -52,7 +68,7 @@ Return a strict JSON object with the following schema. ZERO EMOJIS.
 }
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await generateWithFallback(ai, {
       model: "gemini-3.6-flash",
       contents: prompt,
       config: {
