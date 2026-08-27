@@ -10,12 +10,12 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" }
 
 const MODELS = ["gemini-3.6-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
 
-async function generateWithFallback(aiClient, payload) {
-  let lastError = null;
+async function generateWithFallback(aiClient: any, payload: any) {
+  let lastError: any = null;
   for (const model of MODELS) {
     try {
       return await aiClient.models.generateContent({ ...payload, model });
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`Model ${model} failed:`, error?.message || error);
       lastError = error;
     }
