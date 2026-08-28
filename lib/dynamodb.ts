@@ -71,3 +71,24 @@ export async function saveKineticHistory(userId: string, history: any) {
   });
   return await docClient.send(command);
 }
+
+export async function getUserProfile(userId: string) {
+  const command = new GetCommand({
+    TableName: "UserProfiles",
+    Key: { userId },
+  });
+  const response = await docClient.send(command);
+  return response.Item;
+}
+
+export async function saveUserProfile(userId: string, bioData: any) {
+  const command = new PutCommand({
+    TableName: "UserProfiles",
+    Item: {
+      userId,
+      bioData,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+  return await docClient.send(command);
+}

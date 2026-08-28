@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import VisualNutrition from "@/components/VisualNutrition";
 import { Dumbbell, Utensils, Activity, PowerOff, Zap } from "lucide-react";
 import TacticalBriefing from "@/components/TacticalBriefing";
+import FieldForge from "@/components/FieldForge";
 type Exercise = {
   name: string;
   sets: number;
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [generating, setGenerating] = useState(false);
   const [hasBioData, setHasBioData] = useState(false);
   const [activePhase, setActivePhase] = useState<number>(1);
+  const [forgeMode, setForgeMode] = useState<"IRON" | "FIELD">("IRON");
   const [showRecalibrate, setShowRecalibrate] = useState(false);
   const [recalibrationPrompt, setRecalibrationPrompt] = useState("");
 
@@ -124,27 +126,30 @@ export default function Dashboard() {
       return;
     }
 
-    if (session?.user) {
-      if (typeof window !== "undefined") {
-        const localBio = localStorage.getItem("bioData");
-        if (localBio) {
-          try {
-            const parsed = JSON.parse(localBio);
-            const currentUserId = (session?.user as any)?.id || session?.user?.name || session?.user?.email;
-            // Must have age and weight AND belong to the current authenticated user
-            if (parsed.age && parsed.weight && parsed.userId === currentUserId) {
-              setHasBioData(true);
-            } else {
-              setHasBioData(false);
-            }
-          } catch (e) {
+    const initDashboard = async () => {
+      if (!session?.user) return;
+      
+      try {
+        const profileRes = await fetch("/api/user/profile");
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (profileData.profile && profileData.profile.age && profileData.profile.weight) {
+            setHasBioData(true);
+            // Cache it locally just for immediate component access during generation
+            localStorage.setItem("bioData", JSON.stringify(profileData.profile));
+          } else {
             setHasBioData(false);
           }
-        } else {
-          setHasBioData(false);
         }
+      } catch (e) {
+        console.error("Failed to fetch profile from DB", e);
       }
-      fetchCurrentPlan();
+      
+      await fetchCurrentPlan();
+    };
+
+    if (session?.user) {
+      initDashboard();
     }
   }, [session, status]);
 
@@ -164,6 +169,9 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-col md:flex-row items-center gap-4">
+            <Link href="/manual" className="px-6 py-3 font-bold text-emerald-400 border border-emerald-500/30 rounded-md transition-all hover:bg-emerald-500/10">
+              Field Manual
+            </Link>
             {session?.user && (
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
@@ -174,6 +182,28 @@ export default function Dashboard() {
             )}
           </div>
         </header>
+
+        {/* Forge Mode Toggle */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-1 flex shadow-lg">
+            <button
+              onClick={() => setForgeMode("IRON")}
+              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all ${forgeMode === "IRON" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Iron Forge (Gym)
+            </button>
+            <button
+              onClick={() => setForgeMode("FIELD")}
+              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all ${forgeMode === "FIELD" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Field Forge (Sports)
+            </button>
+          </div>
+        </div>
+
+        {forgeMode === "IRON" ? (
+        <div className="w-full">
+
 
         {/* Phase Navigation */}
         <div className="flex space-x-2 border-b border-slate-800 mt-8 mb-4 overflow-x-auto">
@@ -404,6 +434,10 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        </div>
+        ) : (
+          <FieldForge bioData={localStorage.getItem("bioData") ? JSON.parse(localStorage.getItem("bioData") || "{}") : {}} />
+        )}
       </div>
     </div>
   );

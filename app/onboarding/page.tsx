@@ -49,11 +49,21 @@ export default function BioDataPage() {
 
 
 
-  const handleNext = (e: React.FormEvent) => {
+  const handleNext = async (e: React.FormEvent) => {
     e.preventDefault();
     if (journeyType === "new") {
       const currentUserId = (session?.user as any)?.id || session?.user?.name || session?.user?.email;
-      localStorage.setItem("bioData", JSON.stringify({ ...formData, journeyType, userId: currentUserId }));
+      const newBioData = { ...formData, journeyType, userId: currentUserId };
+      localStorage.setItem("bioData", JSON.stringify(newBioData));
+      
+      // Save strictly to DynamoDB
+      try {
+        await fetch("/api/user/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bioData: newBioData })
+        });
+      } catch(e) { console.error(e); }
       router.push("/onboarding/litmus");
     } else {
       setStep(2);
@@ -68,6 +78,15 @@ export default function BioDataPage() {
     // Fix: MUST save to localStorage so the dashboard knows the profile is complete
     const finalBioData = { ...formData, journeyType, userId: currentUserId };
     localStorage.setItem("bioData", JSON.stringify(finalBioData));
+    
+    // Save strictly to DynamoDB
+    try {
+      await fetch("/api/user/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bioData: finalBioData })
+      });
+    } catch(e) { console.error(e); }
     
     try {
       const res = await fetch("/api/onboarding/veteran", {

@@ -197,28 +197,28 @@ export default function VisualNutrition() {
                 <Flame className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Calories</span>
               </div>
-              <p className="text-xl font-bold text-white">{result.macros.calories}</p>
+              <p className="text-xl font-bold text-white">{result?.macros?.calories || "N/A"}</p>
             </div>
             <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-center">
               <div className="flex items-center justify-center gap-2 text-emerald-400 mb-1">
                 <Target className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Protein</span>
               </div>
-              <p className="text-xl font-bold text-white">{result.macros.protein}</p>
+              <p className="text-xl font-bold text-white">{result?.macros?.protein || "N/A"}</p>
             </div>
             <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-center">
               <div className="flex items-center justify-center gap-2 text-blue-400 mb-1">
                 <Activity className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Carbs</span>
               </div>
-              <p className="text-xl font-bold text-white">{result.macros.carbs}</p>
+              <p className="text-xl font-bold text-white">{result?.macros?.carbs || "N/A"}</p>
             </div>
             <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-center">
               <div className="flex items-center justify-center gap-2 text-yellow-400 mb-1">
                 <Activity className="w-4 h-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Fats</span>
               </div>
-              <p className="text-xl font-bold text-white">{result.macros.fats}</p>
+              <p className="text-xl font-bold text-white">{result?.macros?.fats || "N/A"}</p>
             </div>
           </div>
 

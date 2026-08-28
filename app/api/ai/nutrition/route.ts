@@ -8,7 +8,7 @@ import os from "os";
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy_key" });
 
 
-const MODELS = ["gemini-3.6-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
 
 async function generateWithFallback(aiClient: any, payload: any) {
   let lastError: any = null;
@@ -88,21 +88,14 @@ export async function POST(req: NextRequest) {
       ZERO EMOJIS.
       End your response with ONE specific question about their physical state or deployment.
       
-      Respond strictly in the following JSON format without any markdown wrappers or extra text:
+      Respond strictly in the following JSON format matching this schema:
       {
-        "structuralMortar": {
-          "items": "List of protein sources",
-          "grams": "Estimated grams of protein"
+        "macros": {
+          "calories": "Estimated total calories",
+          "protein": "Estimated grams of protein",
+          "carbs": "Estimated grams of carbs",
+          "fats": "Estimated grams of fats"
         },
-        "glycogenPreLoad": {
-          "items": "List of carb sources",
-          "grams": "Estimated grams of carbs"
-        },
-        "cellularHydration": {
-          "items": "Sources of hydration/fats/micronutrients",
-          "status": "Hydration rating/estimate"
-        },
-        "biologicalMath": "Estimated total calories and breakdown",
         "tacticalAnalysis": "A brief, intense tactical breakdown of how this fuel repairs the targeted muscle groups. Must end with ONE specific question about their physical state or deployment. ZERO EMOJIS."
       }
     `;
