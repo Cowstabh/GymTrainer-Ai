@@ -6,11 +6,12 @@ import { useSession, signOut } from "next-auth/react";
 import toast from "react-hot-toast";
 import VisualNutrition from "@/components/VisualNutrition";
 import { Dumbbell, Utensils, Activity, PowerOff, Zap } from "lucide-react";
-
+import TacticalBriefing from "@/components/TacticalBriefing";
 type Exercise = {
   name: string;
   sets: number;
   reps: string;
+
   notes: string;
   whyItMatters?: string;
   targetWeight?: string;
@@ -149,6 +150,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-black text-slate-200 p-6 md:p-12 font-sans selection:bg-neon-green selection:text-black">
+      <TacticalBriefing />
       <div className="max-w-7xl mx-auto space-y-10">
         
         {/* Header */}
