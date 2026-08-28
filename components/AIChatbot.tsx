@@ -18,6 +18,7 @@ export default function AIChatbot() {
   const [isLoading, setIsLoading] = useState(false);
   const [trainerName, setTrainerName] = useState("Coach Kabir");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Voice States
   const [isListening, setIsListening] = useState(false);
@@ -80,26 +81,36 @@ export default function AIChatbot() {
 
   // Speech-to-Text Engine
   const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Tactical voice systems not supported in this browser.");
       return;
     }
 
-    if (isListening) return; // Allow natural stop
-
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    // continuous=true keeps the mic open until explicitly stopped
+    recognition.continuous = true;
+    // interimResults=true shows text as the user is speaking
+    recognition.interimResults = true;
     recognition.lang = 'en-IN';
 
     recognition.onstart = () => {
       setIsListening(true);
-      toast.success("Mic active. Speak now.");
+      toast.success("Mic active. Tap again to stop.");
     };
 
     recognition.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
+      const transcript = Array.from(e.results)
+        .map((result: any) => result[0].transcript)
+        .join("");
       setInput(transcript);
     };
 
@@ -111,6 +122,7 @@ export default function AIChatbot() {
       setIsListening(false);
     };
 
+    recognitionRef.current = recognition;
     recognition.start();
   };
 

@@ -10,10 +10,10 @@ export async function POST(req: Request) {
     }
 
     // Default High-Quality ElevenLabs Voices 
-    let voiceId = "pNInz6obpgDQGcFmaJgB"; // Adam (Deep, clear male)
+    let voiceId = "N2lVS1w4EtoT3dr4eOWO"; // Callum (Standard Free Tier Male)
     
-    if (trainerName === "Coach Tara") {
-      voiceId = "21m00Tcm4TlvDq8ikWAM"; // Rachel (Professional Female)
+    if (trainerName && trainerName.toLowerCase().includes("tara")) {
+      voiceId = "EXAVITQu4vr4xnSDxMaL"; // Bella (Distinctly Female - Free Tier)
     }
 
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
