@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
-import { getSession } from "next-auth/react";
+import { saveWorkoutPlan } from "@/lib/dynamodb";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
@@ -22,20 +22,17 @@ export async function POST(req: Request) {
   try {
     const { sport, timeframe, history, litmusResult, bioData } = await req.json();
 
-    const systemPrompt = `You are an elite tactical athletic conditioning coach.
-The operative is specializing for a specific sport/event: ${sport}.
-Target Timeframe: ${timeframe}.
-Athletic History: ${history}.
-Baseline Litmus Test Result: ${litmusResult || "Skipped / N/A"}.
-Bio Data: ${JSON.stringify(bioData || {})}.
+    const systemPrompt = `SYS_ARCH: ELITE_SPORTS_COACH.
+SPORT:${sport} TIMEFRAME:${timeframe}
+HIST:${history} LITMUS:${litmusResult||"N/A"}
+BIO:${JSON.stringify(bioData||{})}
 
-Your mission is to generate a highly periodized, customized 7-Day Athletic Training Block (Week 1).
-It must be scientifically structured for their sport (e.g., runners need track intervals, long runs, recovery; footballers need agility, sprints, plyometrics).
-Do not just output standard gym lifts unless they are explicitly prescribed as "Strength & Conditioning" support days.
+MISSION: Generate a highly specific 7-Day Athletic Periodization Matrix (JSON array).
+CRITICAL DIRECTIVE: You are coaching the ACTUAL SPORT (e.g., track running, boxing drills, soccer practice), NOT just assigning gym weights for athletes. 
+If the sport is running (like "2K" or "Marathon"), the matrix MUST consist of actual running assignments (e.g., "5km easy run", "8x400m sprints", "Tempo run"). 
+Do NOT generate a generic gym strength routine. Use the 'sets' and 'reps' fields creatively for sport intervals (e.g. sets: 8, reps: "400m sprint") or set them to 1 / "Distance/Time" if it's a continuous effort (e.g., sets: 1, reps: "2 km").
 
-Output ONLY a JSON array of day objects.
-Each day must have a "day" (e.g. "Day 1: Speed Endurance"), "focus", and an array of "exercises".
-For sports, an "exercise" can be a drill or running block (e.g., name: "400m Repeats", sets: 6, reps: "400m sprint, 90s rest", notes: "Target pace derived from Litmus", whyItMatters: "Explain why this exercise matters").`;
+SCHEMA: [{"day":"str","focus":"str","exercises":[{"name":"str","sets":0,"reps":"str","notes":"str","whyItMatters":"str"}]}]`;
 
     const response = await generateWithFallback(ai, {
       model: "gemini-3.6-flash",
@@ -48,6 +45,16 @@ For sports, an "exercise" can be a drill or running block (e.g., name: "400m Rep
     });
 
     const schedule = JSON.parse(response.text || "[]");
+    
+    // Persist Field Forge to DynamoDB
+    if (bioData?.userId) {
+      await saveWorkoutPlan(bioData.userId, {
+        mode: "FIELD",
+        directive: sport,
+        schedule: schedule
+      }).catch(console.error);
+    }
+
     return NextResponse.json({ schedule });
   } catch (error: any) {
     console.error("Sports Schedule API error:", error);

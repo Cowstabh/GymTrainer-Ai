@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getWorkoutPlan, saveWorkoutPlan, getKineticHistory } from "@/lib/dynamodb";
+import crypto from "crypto";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
-
 
 const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
 
@@ -17,7 +17,7 @@ async function generateWithFallback(aiClient: any, payload: any) {
       lastError = error;
     }
   }
-  throw new Error("All backup AI models are exhausted or rate-limited. " + (lastError?.message || ""));
+  throw new Error("All backup models exhausted. " + (lastError?.message || ""));
 }
 
 export async function POST(req: Request) {
@@ -25,62 +25,57 @@ export async function POST(req: Request) {
     const { userId, bioData, telemetry, nutrition, recalibrationPrompt } = await req.json();
 
     if (!userId) {
-      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+      return NextResponse.json({ error: "userId required" }, { status: 400 });
     }
 
-    // Fetch past KineticHistory if any
+    // 1. CACHING LOGIC
+    let currentHash = "";
+    if (!recalibrationPrompt) {
+      const hashPayload = JSON.stringify({ bioData, telemetry, nutrition });
+      currentHash = crypto.createHash("sha256").update(hashPayload).digest("hex");
+
+      const pastPlanDoc = await getWorkoutPlan(userId).catch(() => null);
+      if (pastPlanDoc && pastPlanDoc.plan && pastPlanDoc.plan.requestHash === currentHash) {
+        const ageHours = (Date.now() - new Date(pastPlanDoc.updatedAt).getTime()) / (1000 * 60 * 60);
+        if (ageHours < 12) {
+          console.log(`CACHE HIT for user ${userId}. Age: ${ageHours.toFixed(2)}h`);
+          return NextResponse.json({ plan: pastPlanDoc.plan });
+        }
+      }
+    }
+
     const kineticHistoryData = await getKineticHistory(userId).catch(() => null);
     const kineticHistory = kineticHistoryData?.history || [];
     const pastPlan = await getWorkoutPlan(userId).catch(() => null);
 
-    const prompt = `SYSTEM ARCHITECTURE: CONTINUOUS ADAPTATION ENGINE.
-    
-You are an Elite Tactical AI Trainer. 
-Your objective is to evaluate the provided bioData, telemetry, nutrition payload, and KineticHistory.
-You must calculate progressive overload based on historical debriefs from KineticHistory (e.g., Weight X for Y+2 reps, or Weight X+5 for Y-2 reps).
+    // 2. PROMPT MINIFICATION
+    const prompt = `SYS_ARCH: TACTICAL_AI.
+BIO:${JSON.stringify(bioData||{})} TELEM:${JSON.stringify(telemetry||{})} NUTR:${JSON.stringify(nutrition||{})}
+KHIST:${JSON.stringify(kineticHistory)} PAST:${JSON.stringify(pastPlan?.plan||{})}
+DAYS:${bioData?.daysPerWeek||3} ENV:"${bioData?.equipmentProfile||'Gym'}"
 
-CRITICAL CONSTRAINT: The user's Bio-Data specifies a workout frequency of ${bioData?.daysPerWeek || 3} days per week. You MUST schedule EXACTLY ${bioData?.daysPerWeek || 3} active kinetic strike (workout) days within the 7-day matrix. The remaining days MUST be explicit system shutdown/recovery days (with an empty exercises array).
-ENVIRONMENT & EQUIPMENT OVERRIDE: The user's operational environment is "${bioData?.equipmentProfile || 'Full Gym Facility'}". If the profile is 'Bodyweight Only', you MUST NOT prescribe bench presses, dumbbells, cables, or machines; prescribe ONLY calisthenics, plyometrics, and leverage movements. If 'Home Forge', assume basic dumbbells/kettlebells but no massive machines.
+RULES:
+1. Exactly ${bioData?.daysPerWeek||3} active days. Rest days empty.
+2. Apply progressive overload via KHIST.
+3. If Env='Bodyweight Only', calisthenics only.
+${recalibrationPrompt ? `4. RECALIBRATION:"${recalibrationPrompt}". MODIFY ONLY REQUESTED ITEMS. PRESERVE REST EXACTLY.` : ''}
 
-${recalibrationPrompt ? `RECALIBRATION DIRECTIVE (STRICT GUARDRAIL): The user specifically requested the following edit to their current matrix: "${recalibrationPrompt}". You MUST preserve the rest of the 'Past Plan' matrix EXACTLY as it was, modifying ONLY the specific components requested. DO NOT hallucinate a completely new schedule. DO NOT rewrite everything. Apply surgical precision.` : ''}
-
-User Payload:
-Bio-Data: ${JSON.stringify(bioData || {})}
-Telemetry: ${JSON.stringify(telemetry || {})}
-Nutrition: ${JSON.stringify(nutrition || {})}
-Kinetic History: ${JSON.stringify(kineticHistory)}
-Past Plan: ${JSON.stringify(pastPlan?.plan || {})}
-
-Return a strict JSON object with the following schema. ZERO EMOJIS.
-{
-  "status": "APPROVED" | "REJECTED",
-  "preFlightIgnition": "A tactical directive explaining the refusal (if rejected) or mission briefing (if approved). This is a strict command reminding the user of their exact injury constraints and fueling protocols before they execute the matrix. DO NOT ask a question here.",
-  "tacticalExecutionMatrix": [
-    // If APPROVED, provide a 7-day schedule array:
-    {
-      "day": "string",
-      "focus": "string",
-      "exercises": [ { "name": "string", "sets": "number", "reps": "string", "targetWeight": "string", "notes": "string", "progressiveOverloadLogic": "string" } ],
-      "intensity": "string",
-      "durationMinutes": "number"
-    }
-  ]
-}
-`;
+JSON_SCHEMA: {
+"status":"APPROVED"|"REJECTED",
+"preFlightIgnition":"Briefing or rejection reason.",
+"tacticalExecutionMatrix": [{"day":"str","focus":"str","exercises":[{"name":"str","sets":0,"reps":"str","targetWeight":"str","notes":"str","progressiveOverloadLogic":"str"}],"intensity":"str","durationMinutes":0}]
+}`;
 
     const response = await generateWithFallback(ai, {
       model: "gemini-3.6-flash",
       contents: prompt,
-      config: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-      },
+      config: { temperature: 0.1, responseMimeType: "application/json" },
     });
     
     const aiResponse = JSON.parse(response.text || "{}");
 
-    // Persist to DynamoDB only if a schedule was generated
     if (aiResponse.status === "APPROVED" && aiResponse.tacticalExecutionMatrix) {
+      aiResponse.requestHash = currentHash; // Embed hash for future cache hits
       await saveWorkoutPlan(userId, aiResponse).catch(console.error);
     } else if (aiResponse.status === "REJECTED") {
       return NextResponse.json({ error: aiResponse.preFlightIgnition, rejected: true }, { status: 400 });
@@ -88,7 +83,7 @@ Return a strict JSON object with the following schema. ZERO EMOJIS.
 
     return NextResponse.json({ plan: aiResponse });
   } catch (error: any) {
-    console.error("Error generating schedule:", error);
-    return NextResponse.json({ error: "Failed to generate schedule" }, { status: 500 });
+    console.error("Schedule Gen Error:", error);
+    return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
 }

@@ -8,6 +8,8 @@ import VisualNutrition from "@/components/VisualNutrition";
 import { Dumbbell, Utensils, Activity, PowerOff, Zap } from "lucide-react";
 import TacticalBriefing from "@/components/TacticalBriefing";
 import FieldForge from "@/components/FieldForge";
+import TacticalLoader from "@/components/TacticalLoader";
+import GymAmbience from "@/components/GymAmbience";
 type Exercise = {
   name: string;
   sets: number;
@@ -27,19 +29,62 @@ type DaySchedule = {
   durationMinutes: number;
 };
 
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+
+// Global cache for SPA navigation during inflight Iron Forge generation
+let globalIronPromise: Promise<any> | null = null;
+let cachedIronResult: any = null;
+let isGeneratingIron = false;
+
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const [schedule, setSchedule] = useState<DaySchedule[] | null>(null);
   const [directive, setDirective] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [startDay, setStartDay] = useState<string>("Monday");
+  const [generating, setGenerating] = useState(isGeneratingIron);
   const [hasBioData, setHasBioData] = useState(false);
   const [activePhase, setActivePhase] = useState<number>(1);
-  const [forgeMode, setForgeMode] = useState<"IRON" | "FIELD">("IRON");
+  const [forgeMode, setForgeModeState] = useState<"IRON" | "FIELD">("IRON");
+  const [activePlanMode, setActivePlanMode] = useState<"IRON" | "FIELD" | null>(null);
   const [showRecalibrate, setShowRecalibrate] = useState(false);
   const [recalibrationPrompt, setRecalibrationPrompt] = useState("");
 
+  useEffect(() => {
+    const saved = localStorage.getItem("forgeMode");
+    if (saved === "IRON" || saved === "FIELD") setForgeModeState(saved);
+
+    let mounted = true;
+    if (globalIronPromise) {
+      globalIronPromise.then(data => {
+        if (mounted && data) {
+          if (data.rejected) {
+            toast.error(`TACTICAL OVERRIDE: ${data.error}`);
+          } else if (data.plan) {
+            setSchedule(data.plan.tacticalExecutionMatrix || data.plan.schedule || null);
+            setDirective(data.plan.preFlightIgnition || data.plan.directive || null);
+            setShowRecalibrate(false);
+            setRecalibrationPrompt("");
+            setActivePhase(2);
+          }
+          setGenerating(false); setLoading(false);
+        }
+      }).catch(() => {
+        if (mounted) { setGenerating(false); setLoading(false); }
+      });
+    }
+
+    return () => { mounted = false; };
+  }, []);
+
+  const setForgeMode = (mode: "IRON" | "FIELD") => {
+    setForgeModeState(mode);
+    localStorage.setItem("forgeMode", mode);
+  };
+
   const fetchCurrentPlan = async () => {
+    if (isGeneratingIron || (typeof window !== "undefined" && (window as any).getIsGeneratingField && (window as any).getIsGeneratingField())) { setLoading(false); return; } // Skip DB fetch if we have an active generation in flight
     setLoading(true);
     try {
       const res = await fetch("/api/workouts/current");
@@ -49,9 +94,14 @@ export default function Dashboard() {
         if (actualPlan) {
           setSchedule(actualPlan.tacticalExecutionMatrix || actualPlan.schedule || null);
           setDirective(actualPlan.preFlightIgnition || actualPlan.directive || null);
+          setActivePlanMode(actualPlan.mode || "IRON");
+          if (actualPlan.mode) {
+            setForgeMode(actualPlan.mode);
+          }
         } else {
           setSchedule(null);
           setDirective(null);
+          setActivePlanMode(null);
         }
       }
     } catch (e) {
@@ -84,7 +134,8 @@ export default function Dashboard() {
         parsedTelemetry = telemetryData ? JSON.parse(telemetryData) : null;
       } catch (e) {}
 
-      const res = await fetch("/api/ai/schedule", {
+      isGeneratingIron = true;
+      globalIronPromise = fetch("/api/ai/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -93,10 +144,15 @@ export default function Dashboard() {
           telemetry: parsedTelemetry,
           recalibrationPrompt: recalibrationPrompt || undefined
         }),
+      }).then(async res => {
+        const data = await res.json();
+        return { ok: res.ok, ...data };
       });
-      const data = await res.json();
 
-      if (!res.ok && data.rejected) {
+      const data = await globalIronPromise;
+      cachedIronResult = data;
+
+      if (!data.ok && data.rejected) {
         toast.error(`TACTICAL OVERRIDE: ${data.error}`);
         return;
       }
@@ -107,14 +163,15 @@ export default function Dashboard() {
         setShowRecalibrate(false);
         setRecalibrationPrompt("");
         // Automatically switch to the Execution Debrief tab to view the generated matrix
-        if (data.plan.tacticalExecutionMatrix || data.plan.schedule) {
-          setActivePhase(2);
-        }
+        setActivePhase(2);
       }
     } catch (e) {
       console.error(e);
+      toast.error("Failed to generate execution matrix");
     } finally {
-      setGenerating(false);
+      globalIronPromise = null;
+      isGeneratingIron = false;
+      setGenerating(false); setLoading(false);
     }
   };
 
@@ -128,6 +185,13 @@ export default function Dashboard() {
 
     const initDashboard = async () => {
       if (!session?.user) return;
+      
+      const savedStartDay = localStorage.getItem("programStartDay");
+      if (savedStartDay) {
+        setStartDay(savedStartDay);
+      }
+
+      const bioData = localStorage.getItem("bioData");
       
       try {
         const profileRes = await fetch("/api/user/profile");
@@ -172,14 +236,8 @@ export default function Dashboard() {
             <Link href="/manual" className="px-6 py-3 font-bold text-emerald-400 border border-emerald-500/30 rounded-md transition-all hover:bg-emerald-500/10">
               Field Manual
             </Link>
-            {session?.user && (
-              <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="px-6 py-3 font-bold text-slate-200 bg-slate-800 rounded-md transition-all hover:bg-slate-700 hover:text-white"
-              >
-                Logout
-              </button>
-            )}
+
+            <GymAmbience />
           </div>
         </header>
 
@@ -188,13 +246,15 @@ export default function Dashboard() {
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-1 flex shadow-lg">
             <button
               onClick={() => setForgeMode("IRON")}
-              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all ${forgeMode === "IRON" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
+              disabled={generating}
+              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${forgeMode === "IRON" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Iron Forge (Gym)
             </button>
             <button
               onClick={() => setForgeMode("FIELD")}
-              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all ${forgeMode === "FIELD" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
+              disabled={generating}
+              className={`px-8 py-3 rounded-md font-bold uppercase tracking-wider text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${forgeMode === "FIELD" ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Field Forge (Sports)
             </button>
@@ -257,11 +317,8 @@ export default function Dashboard() {
         <div className="pt-4">
           {/* Phase 1: Generation */}
           {activePhase === 1 && (
-            loading || status === "loading" ? (
-              <div className="flex flex-col items-center justify-center h-64 space-y-4">
-                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-emerald-500 font-mono animate-pulse uppercase tracking-widest">Compiling Matrix...</p>
-              </div>
+            loading || status === "loading" || generating ? (
+              <TacticalLoader />
             ) : (
               <>
                 {directive && (
@@ -302,11 +359,11 @@ export default function Dashboard() {
                             <p className="text-xs text-slate-500 mt-2 italic">The AI will strictly preserve the rest of your matrix and only apply these targeted edits. You must specify what to change.</p>
                           </div>
                         )}
-                        <div className="flex gap-4">
+                        <div className="flex gap-3">
                           {showRecalibrate && (
                             <button 
                               onClick={() => { setShowRecalibrate(false); setRecalibrationPrompt(""); }}
-                              className="px-6 py-3 font-bold text-slate-300 bg-slate-800 rounded-md transition-all hover:bg-slate-700 uppercase tracking-wider"
+                              className="flex-1 px-6 py-3 font-bold text-slate-300 bg-slate-800 rounded-md transition-all hover:bg-slate-700 uppercase tracking-wider text-xs"
                             >
                               Cancel
                             </button>
@@ -314,11 +371,14 @@ export default function Dashboard() {
                           <button 
                             onClick={handleRegenerate}
                             disabled={generating || Boolean(schedule && showRecalibrate && recalibrationPrompt.trim() === '')}
-                            className="px-8 py-3 font-bold text-black bg-emerald-500 rounded-md transition-all hover:bg-emerald-400 disabled:opacity-50 uppercase tracking-wider shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                            className="flex-1 px-6 py-3 font-bold text-black bg-emerald-500 rounded-md transition-all hover:bg-emerald-400 disabled:opacity-50 uppercase tracking-wider text-xs shadow-[0_0_15px_rgba(16,185,129,0.3)]"
                           >
                             {generating ? "Recalibrating..." : schedule ? "Confirm Edit" : "Initiate Generation"}
                           </button>
                         </div>
+                          <p className="mt-4 text-xs text-slate-500 italic max-w-md mx-auto text-center leading-relaxed">
+                            Note: This process may take a few moments. The AI is carefully analyzing your telemetry, bio-data, and specific goals to craft a highly personalized protocol.
+                          </p>
                       </div>
                     )
                   ) : (
@@ -336,16 +396,34 @@ export default function Dashboard() {
 
           {/* Phase 2: Execution Debrief */}
           {activePhase === 2 && (
-            loading || status === "loading" ? (
-              <div className="flex flex-col items-center justify-center h-64 space-y-4">
-                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-emerald-500 font-mono animate-pulse uppercase tracking-widest">Compiling Matrix...</p>
-              </div>
+            loading || status === "loading" || generating ? (
+              <TacticalLoader />
             ) : schedule ? (
               <div>
-                <h2 className="text-2xl font-black text-white uppercase tracking-wider mb-6 border-b border-slate-800 pb-2">Tactical Execution Matrix</h2>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b border-slate-800 pb-2">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-wider mb-2 md:mb-0">Tactical Execution Matrix</h2>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-slate-400 font-bold uppercase tracking-wider">Start Day:</label>
+                    <select
+                      className="bg-slate-900 border border-slate-700 text-emerald-400 font-bold rounded px-3 py-1 focus:outline-none focus:border-emerald-500"
+                      value={startDay}
+                      onChange={(e) => {
+                        setStartDay(e.target.value);
+                        localStorage.setItem("programStartDay", e.target.value);
+                      }}
+                    >
+                      {DAYS_OF_WEEK.map((day) => (
+                        <option key={day} value={day}>{day}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                {schedule.map((dayPlan, idx) => (
+                {schedule.map((dayPlan, idx) => {
+                  const startIdx = DAYS_OF_WEEK.indexOf(startDay);
+                  const actualDayName = DAYS_OF_WEEK[(startIdx + idx) % 7];
+                  
+                  return (
                   <Link 
                     href={`/workout/${(dayPlan.day || `day-${idx}`).toLowerCase().replace(/\s+/g, '-')}`}
                     key={idx} 
@@ -357,8 +435,11 @@ export default function Dashboard() {
                     <div className="p-6">
                       <div className="flex justify-between items-start mb-4">
                         <div>
-                          <h3 className="text-xl font-black text-white uppercase tracking-wider">{dayPlan.day || `Day ${idx+1}`}</h3>
-                          <p className="text-emerald-400 font-semibold">{dayPlan.focus || 'Rest'}</p>
+                          <h3 className="text-xl font-black text-white uppercase tracking-wider">
+                            {actualDayName}
+                            <span className="block text-sm text-slate-500 mt-1">Day {idx+1}</span>
+                          </h3>
+                          <p className="text-emerald-400 font-semibold mt-1">{dayPlan.focus || 'Rest'}</p>
                         </div>
                         <div className="text-right">
                           <span className="inline-block px-3 py-1 bg-slate-800 text-xs font-mono rounded-full text-slate-300 mb-1 border border-slate-700">
@@ -398,7 +479,8 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </Link>
-                ))}
+                  );
+                })}
                 </div>
               </div>
             ) : (
@@ -436,7 +518,12 @@ export default function Dashboard() {
         </div>
         </div>
         ) : (
-          <FieldForge bioData={localStorage.getItem("bioData") ? JSON.parse(localStorage.getItem("bioData") || "{}") : {}} />
+          <FieldForge 
+            bioData={localStorage.getItem("bioData") ? JSON.parse(localStorage.getItem("bioData") || "{}") : {}} 
+            initialSchedule={activePlanMode === "FIELD" ? schedule : null}
+            initialSport={activePlanMode === "FIELD" ? (directive || "") : ""}
+            onGenerationStateChange={setGenerating}
+          />
         )}
       </div>
     </div>

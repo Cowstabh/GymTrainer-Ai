@@ -13,6 +13,7 @@ export default function LitmusTestPage() {
   
   const [timeLeft, setTimeLeft] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [hasCompletedTimer, setHasCompletedTimer] = useState(false);
   const [assessment, setAssessment] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,8 +23,9 @@ export default function LitmusTestPage() {
       timer = setInterval(() => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
-    } else if (timeLeft === 0) {
+    } else if (timeLeft === 0 && isTimerRunning) {
       setIsTimerRunning(false);
+      setHasCompletedTimer(true);
     }
     return () => clearInterval(timer);
   }, [isTimerRunning, timeLeft]);
@@ -31,6 +33,12 @@ export default function LitmusTestPage() {
   const startTimer = (seconds: number) => {
     setTimeLeft(seconds);
     setIsTimerRunning(true);
+    setHasCompletedTimer(false);
+  };
+
+  const stopTimer = () => {
+    setIsTimerRunning(false);
+    setHasCompletedTimer(true);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,6 +47,8 @@ export default function LitmusTestPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isTimerRunning || !hasCompletedTimer) return; // Prevent submission if timer isn't completed
+    
     setLoading(true);
 
     const bioData = JSON.parse(localStorage.getItem("bioData") || "{}");
@@ -98,7 +108,7 @@ export default function LitmusTestPage() {
           <div className="flex gap-2">
             <button onClick={() => startTimer(60)} className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded">1 Min</button>
             <button onClick={() => startTimer(120)} className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded">2 Min</button>
-            <button onClick={() => setIsTimerRunning(false)} className="px-3 py-1 text-sm bg-red-900/50 hover:bg-red-900 rounded text-red-200">Stop</button>
+            <button onClick={stopTimer} className="px-3 py-1 text-sm bg-red-900/50 hover:bg-red-900 rounded text-red-200">Stop</button>
           </div>
         </div>
 
@@ -141,11 +151,15 @@ export default function LitmusTestPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isTimerRunning || !hasCompletedTimer}
             className="w-full mt-6 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-semibold py-3 rounded-lg transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
           >
             {loading ? (
               <span className="animate-pulse">Analyzing Data...</span>
+            ) : isTimerRunning ? (
+              "Test in Progress..."
+            ) : !hasCompletedTimer ? (
+              "Run Timer to Unlock"
             ) : (
               "Get Reality Check"
             )}

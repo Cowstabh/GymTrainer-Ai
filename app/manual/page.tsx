@@ -1,8 +1,25 @@
-import React from 'react';
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Dumbbell, Target, Flame, Mic, Shield, ChevronLeft } from 'lucide-react';
 
 export default function ManualPage() {
+  const [trainerName, setTrainerName] = useState("Coach Kabir");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("bioData");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const gender = parsed.trainerGender || "No Preference";
+        if (gender === "Male") setTrainerName("Coach Vikram");
+        else if (gender === "Female") setTrainerName("Coach Tara");
+        else setTrainerName("Coach Kabir");
+      }
+    } catch(e) {}
+  }, []);
+
   return (
     <div className="min-h-screen bg-black text-slate-300 selection:bg-emerald-500/30 font-sans pb-20">
       
@@ -106,10 +123,10 @@ export default function ManualPage() {
 
           <h2 className="text-3xl font-extrabold text-white uppercase tracking-wide flex items-center gap-3">
             <Mic className="w-8 h-8 text-emerald-500 md:hidden" />
-            Coach Tara (Voice AI)
+            {trainerName} (Voice AI)
           </h2>
           <p className="text-lg leading-relaxed text-slate-400">
-            Powered by hyper-realistic neural voice synthesis, Coach Tara is your constant tactical overseer. 
+            Powered by hyper-realistic neural voice synthesis, {trainerName} is your constant tactical overseer. 
           </p>
 
           <ul className="space-y-3 mt-4 text-slate-300">

@@ -5,7 +5,7 @@ import { getKineticHistory, saveKineticHistory } from "@/lib/dynamodb";
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "dummy" });
 
 
-const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+const MODELS = ["gemini-2.5-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"];
 
 async function generateWithFallback(aiClient: any, payload: any) {
   let lastError: any = null;
@@ -38,9 +38,9 @@ export async function POST(req: Request) {
     const kineticHistoryData = await getKineticHistory(userId).catch(() => null);
     const kineticHistory = kineticHistoryData?.history || [];
 
-    const systemPrompt = `You are ${trainerName}, an elite Indian tactical AI fitness coach. 
+    const systemPrompt = `You are ${trainerName}, an elite tactical AI fitness coach. 
 Your tone MUST be highly compassionate yet strictly disciplined. You care deeply about the user's well-being but absolutely demand their maximum effort and consistency. You speak with authority, wisdom, and encouragement.
-The user selected a trainer gender of '${trainerGender}', which dictates your persona.
+The user selected a trainer gender of '${trainerGender}', which dictates your persona. Keep responses concise and direct. Do not use overly theatrical greetings.
 
 CRITICAL TEMPORAL AWARENESS:
 The user's current live time is: ${clientTime || new Date().toLocaleString()}
