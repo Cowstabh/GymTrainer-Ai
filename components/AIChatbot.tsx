@@ -10,8 +10,11 @@ type Message = {
   content: string;
 };
 
+import { usePathname } from "next/navigation";
+
 export default function AIChatbot() {
   const { data: session, status } = useSession();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -23,6 +26,7 @@ export default function AIChatbot() {
   // Voice States
   const [isListening, setIsListening] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     try {
@@ -35,7 +39,7 @@ export default function AIChatbot() {
         else setTrainerName("Coach Kabir");
       }
     } catch(e) {}
-  }, []);
+  }, [isOpen, pathname]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,6 +52,11 @@ export default function AIChatbot() {
   // Text-to-Speech Engine (ElevenLabs Hyper-Realistic Audio)
   const speakMessage = async (text: string) => {
     if (isMuted) return;
+    
+    // Stop any currently playing audio before starting a new one
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+    }
     
     try {
       // Clean markdown asterisks from text
@@ -68,6 +77,7 @@ export default function AIChatbot() {
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
       audio.play();
     } catch (error) {
       console.error("ElevenLabs Playback error:", error);
@@ -199,8 +209,14 @@ export default function AIChatbot() {
             </h3>
             <div className="flex gap-3">
               <button onClick={() => {
-                  setIsMuted(!isMuted);
-                  if (!isMuted) window.speechSynthesis.cancel();
+                  const newMutedState = !isMuted;
+                  setIsMuted(newMutedState);
+                  if (newMutedState) {
+                    window.speechSynthesis.cancel();
+                    if (currentAudioRef.current) {
+                      currentAudioRef.current.pause();
+                    }
+                  }
                 }} 
                 className="text-emerald-100 hover:text-white transition"
               >
